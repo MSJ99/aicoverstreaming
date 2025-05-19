@@ -1,0 +1,59 @@
+import paramiko
+import time
+
+
+# connect_ssh() 추후 개선: 비밀번호 인증 방식 -> 키 파일 인증 방식으로 변경하기 / AutoAddPolicy -> known_hosts에 서버 키 미리 등록하거나 정책 다르게 설정하기
+def connect_ssh():
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(
+        hostname="<hostname>",
+        port=22,
+        username="<myid>",
+        password="<mypassword>",
+    )
+    return ssh
+
+
+def upload_file(ssh, local_path, remote_path):
+    sftp = ssh.open_sftp()
+    sftp.put(local_path, remote_path)
+    sftp.close()
+
+
+def submit_job(ssh, remote_path, output_path):
+    stdin, stdout, stderr = ssh.exec_command(
+        f"sbatch ~/convert.sh {remote_path} {output_path}"
+    )
+    job_submission_output = stdout.read().decode().strip()
+    print(job_submission_output)
+
+
+# GPU 서버에서 작업이 끝날 때까지 대기하는 기능 ••• 방식 개선?
+# check_interval: 작업이 완료되었는지 확인하는 주기
+def wait_for_job_done(ssh, output_path, check_interval=5):
+    job_done = False
+    while not job_done:
+        stdin, stdout, stderr = ssh.exec_command(
+            f"test -f {output_path} && echo 'done'"
+        )
+        if stdout.read().decode().strip() == "done":
+            job_done = True
+        else:
+            time.sleep(check_interval)
+
+
+def download_file(
+    ssh, remote_path, local_path, remote_input_path="none", remote_output_path="none"
+):
+    sftp = ssh.open_sftp()
+    sftp.get(remote_path, local_path)
+    if remote_input_path != "none":
+        sftp.remove(remote_input_path)
+    if remote_output_path != "none":
+        sftp.remove(remote_output_path)
+    sftp.close()
+
+
+def close_ssh(ssh):
+    ssh.close()
