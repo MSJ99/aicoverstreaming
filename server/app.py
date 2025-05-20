@@ -10,6 +10,9 @@ from server.services.ssh_service import (
     close_ssh,
 )
 import uuid
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일 자동 로드
 
 app = Flask(__name__)
 UPLOAD_SOURCE_FOLDER = "uploads/source"

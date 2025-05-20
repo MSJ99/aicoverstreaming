@@ -1,16 +1,17 @@
+import os
 import paramiko
 import time
 
 
 def connect_ssh():
+    host = os.environ.get("SSH_HOST")
+    username = os.environ.get("SSH_USER")
+    password = os.environ.get("SSH_PASSWORD")
+    port = int(os.environ.get("SSH_PORT", 22))
+
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(
-        hostname="myserver",
-        port=30080,
-        username="myname",
-        password="mypassword",
-    )
+    ssh.connect(host, port=port, username=username, password=password)
     return ssh
 
 
