@@ -2,7 +2,6 @@ import paramiko
 import time
 
 
-# connect_ssh() 추후 개선: 비밀번호 인증 방식 -> 키 파일 인증 방식으로 변경하기 / AutoAddPolicy -> known_hosts에 서버 키 미리 등록하거나 정책 다르게 설정하기
 def connect_ssh():
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())

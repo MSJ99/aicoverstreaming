@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import '../services/conversion_service.dart';
 
 /// ConversionModeButton 위젯
 class ConversionModeButton extends StatefulWidget {
   final bool initialModeOn;
   final ValueChanged<bool>? onChanged;
+  final bool enabled;
 
   const ConversionModeButton({
     Key? key,
     this.initialModeOn = false,
     this.onChanged,
+    this.enabled = true,
   }) : super(key: key);
 
   @override
@@ -34,7 +37,7 @@ class _ConversionModeButtonState extends State<ConversionModeButton> {
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: _toggleMode,
+      onPressed: widget.enabled ? _toggleMode : null,
       style: ElevatedButton.styleFrom(
         backgroundColor: _isModeOn ? Colors.blue : Colors.grey[400],
         foregroundColor: Colors.white,
@@ -60,6 +63,7 @@ class PreferenceScreen extends StatefulWidget {
 
 class _PreferenceScreenState extends State<PreferenceScreen> {
   bool _conversionModeOn = false;
+  String? selectedSinger;
 
   // 예시: Conversion Mode가 ON일 때 표시할 곡 정보
   // 실제로는 스트리밍 앱 연동 필요
@@ -80,11 +84,13 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
           children: [
             ConversionModeButton(
               initialModeOn: _conversionModeOn,
-              onChanged: (isOn) {
+              onChanged: (isOn) async {
                 setState(() {
                   _conversionModeOn = isOn;
                 });
+                await setConversionMode(isOn);
               },
+              enabled: selectedSinger != null,
             ),
             const SizedBox(height: 32),
             if (_conversionModeOn)

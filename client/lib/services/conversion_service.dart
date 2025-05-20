@@ -19,3 +19,16 @@ Future<void> uploadAudioFile(String filePath) async {
     print("파일 업로드 실패: $e");
   }
 }
+
+// Conversion Mode 상태를 서버와 동기화하는 함수
+Future<void> setConversionMode(bool isOn) async {
+  Dio dio = Dio();
+  try {
+    await dio.post(
+      'http://<BACKEND_IP>:5000/conversion_mode',
+      data: {'on': isOn},
+    );
+  } catch (e) {
+    print("Conversion Mode 동기화 실패: $e");
+  }
+}
