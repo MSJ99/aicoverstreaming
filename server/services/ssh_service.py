@@ -6,10 +6,10 @@ def connect_ssh():
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(
-        hostname="<hostname>",
-        port=22,
-        username="<myid>",
-        password="<mypassword>",
+        hostname="myserver",
+        port=30080,
+        username="myname",
+        password="mypassword",
     )
     return ssh
 

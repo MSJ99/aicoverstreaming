@@ -2,9 +2,19 @@ import 'package:flutter/material.dart';
 import 'screens/select_singer_screen.dart';
 import 'screens/playlist_screen.dart';
 import 'screens/preference_screen.dart';
+import 'package:provider/provider.dart';
+import 'providers/playlist_provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => PlaylistProvider()),
+        // ...다른 Provider
+      ],
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

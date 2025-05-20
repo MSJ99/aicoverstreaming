@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/conversion_service.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import '../models/song.dart';
+import '../screens/playlist_screen.dart';
+import 'package:provider/provider.dart';
+import '../providers/playlist_provider.dart';
 
 /// ConversionModeButton 위젯
 class ConversionModeButton extends StatefulWidget {
@@ -160,9 +167,57 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                   ),
                 ),
               ),
+            ElevatedButton(
+              onPressed: () async {
+                if (selectedSinger == null) return;
+                final resultFile = await requestVoiceConversion(
+                  selectedSinger!,
+                  currentSong['title']!,
+                );
+                // 여기서 곡을 추가하지 않고, 단순히 파일이 잘 받아졌는지만 확인
+                print('변환 완료: ${resultFile.path}');
+                // 필요하다면 안내 메시지, 파일 경로 확인 등만 수행
+                _onVoiceConversionComplete(
+                  context,
+                  resultFile,
+                  currentSong['title']!,
+                  selectedSinger!,
+                );
+              },
+              child: Text('Voice Conversion 테스트'),
+            ),
           ],
         ),
       ),
     );
   }
+
+  void _onVoiceConversionComplete(
+    BuildContext context,
+    File resultFile,
+    String title,
+    String artist,
+  ) {
+    // Provider를 통해 곡 추가
+    Provider.of<PlaylistProvider>(context, listen: false).addSong(
+      Song(
+        title: title,
+        artist: artist,
+        audioUrl: resultFile.path, // Song 모델에 맞게 경로 전달
+      ),
+    );
+  }
+}
+
+Future<File> requestVoiceConversion(String singer, String song) async {
+  final dio = Dio();
+  final response = await dio.post(
+    'http://<SERVER_IP>:5000/convert',
+    data: {'singer': singer, 'song': song},
+    options: Options(responseType: ResponseType.bytes),
+  );
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$singer\_$song.wav');
+  await file.writeAsBytes(response.data);
+  return file;
 }
