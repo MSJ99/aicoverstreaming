@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/song.dart';
-import '../screens/playlist_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/playlist_provider.dart';
 
