@@ -5,7 +5,7 @@ import 'screens/preference_screen.dart';
 import 'package:provider/provider.dart';
 import 'providers/playlist_provider.dart';
 
-void main() {
+void main() async {
   runApp(
     MultiProvider(
       providers: [

@@ -1,7 +1,7 @@
 from flask import Flask, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 import os
-from server.services.ssh_service import (
+from services.ssh_service import (
     connect_ssh,
     upload_file,
     submit_job,
@@ -11,8 +11,11 @@ from server.services.ssh_service import (
 )
 import uuid
 from dotenv import load_dotenv
+import logging
+import socket
 
 load_dotenv()  # .env 파일 자동 로드
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 UPLOAD_SOURCE_FOLDER = "uploads/source"
@@ -42,17 +45,24 @@ ssh_connection = None
 # 음성 변환 요청 처리
 @app.route("/convert", methods=["POST"])
 def convert_voice():
-    global ssh_connection
     data = request.json
+    if not data:
+        return "Invalid JSON", 400
     singer = data.get("singer")
     song = data.get("song")
     if not singer or not song:
         return "가수와 곡 정보를 모두 입력해야 합니다.", 400
 
+    logging.info(f"[LOG] 받은 singer: {singer}, song: {song}")
+
     # GPU 서버 input/output 경로
     remote_target = f"/data/msj9518/repos/seed-vc/input/{secure_filename(singer)}.wav"
     remote_source = f"/data/msj9518/repos/seed-vc/input/{secure_filename(song)}.wav"
-    remote_output = f"/data/msj9518/repos/seed-vc/output/{secure_filename(singer)}_{secure_filename(song)}.wav"
+    # 결과 파일명 규칙에 맞게 수정 (source=곡명, target=가수명, arg1=1.0, arg2=50, arg3=0.7)
+    arg1 = 1.0
+    arg2 = 50
+    arg3 = 0.7
+    remote_output = f"/data/msj9518/repos/seed-vc/output/vc_{secure_filename(song)}_{secure_filename(singer)}_{arg1}_{arg2}_{arg3}.wav"
 
     # SSH 연결
     if ssh_connection is None:
@@ -64,7 +74,7 @@ def convert_voice():
 
     # Slurm 작업 제출 (스크립트에서 인자 전달 방식에 맞게)
     # 예시: sbatch ~/convert.sh {remote_source} {remote_target} {remote_output}
-    submit_job(ssh, remote_source, remote_target, remote_output)
+    submit_job(ssh)
 
     # 작업 완료 대기
     wait_for_job_done(ssh, remote_output)
@@ -78,12 +88,14 @@ def convert_voice():
     if close_after:
         close_ssh(ssh)
 
+    print("[LOG] 변환 완료")
     return send_file(local_result_path, as_attachment=True)
 
 
 # 가수 검색 요청 처리
 @app.route("/singers", methods=["GET"])
 def get_singers():
+    print("[LOG] /singers endpoint called")
     query = request.args.get("query", "")
     filtered = [s for s in singers if query in s]
     return jsonify(filtered)
@@ -92,6 +104,7 @@ def get_singers():
 # 선택된 가수 처리
 @app.route("/selected_singers", methods=["GET", "POST"])
 def handle_selected_singers():
+    print("[LOG] /selected_singers endpoint called")
     if request.method == "POST":
         data = request.json
         singer = data.get("singer")
@@ -104,12 +117,14 @@ def handle_selected_singers():
 # 노래 목록 요청 처리
 @app.route("/songs", methods=["GET"])
 def get_songs():
+    print("[LOG] /songs endpoint called")
     return jsonify(songs)
 
 
 # 변환 모드 처리
 @app.route("/conversion_mode", methods=["GET", "POST"])
 def handle_conversion_mode():
+    print("[LOG] /conversion_mode endpoint called")
     global conversion_mode, ssh_connection
     data = request.json
     conversion_mode = data.get("on", False)
@@ -124,11 +139,13 @@ def handle_conversion_mode():
 # 현재 재생 중인 노래 정보 요청 처리
 @app.route("/current_song", methods=["GET"])
 def get_current_song():
+    print("[LOG] /current_song endpoint called")
     return jsonify(current_song)
 
 
 @app.route("/upload_audio", methods=["POST"])
 def upload_audio():
+    print("[LOG] /upload_audio endpoint called")
     file = request.files["file"]
     file_type = request.form["type"]  # "target" 또는 "source"
     name = request.form["name"]  # 가수이름 또는 곡이름
@@ -149,5 +166,26 @@ def upload_audio():
     return "업로드 완료"
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    print("[LOG] /health endpoint called")
+    return "healthy"
+
+
+@app.route("/get_backend_ip", methods=["GET"])
+def get_backend_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # 실제 연결은 하지 않지만, 현재 네트워크에서 사용 중인 IP를 얻음
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return jsonify({"ip": ip})
+
+
 if __name__ == "__main__":
+    print("[LOG] Server started")
     app.run(host="0.0.0.0", port=5000, debug=True)

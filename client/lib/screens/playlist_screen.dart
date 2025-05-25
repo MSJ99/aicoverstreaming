@@ -17,21 +17,16 @@ class PlaylistScreen extends StatefulWidget {
 
 class _PlaylistScreenState extends State<PlaylistScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  List<Song> songs = [];
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.initialSong != null) {
-      songs.add(widget.initialSong!);
-    }
-  }
-
   int? _playingIndex;
 
-  // 실제 오디오 플레이어 연동 시, audioplayers 패키지 등 사용 권장
   void _onPlayPause(int index) async {
+    final playlistProvider = Provider.of<PlaylistProvider>(
+      context,
+      listen: false,
+    );
+    final songs = playlistProvider.songs;
     final song = songs[index];
+    print('재생 시도: \\${song.audioUrl}');
     if (_playingIndex == index) {
       await _audioPlayer.pause();
       setState(() {

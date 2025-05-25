@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/song.dart';
 import 'package:provider/provider.dart';
 import '../providers/playlist_provider.dart';
+import 'package:uuid/uuid.dart';
 
 /// ConversionModeButton 위젯
 class ConversionModeButton extends StatefulWidget {
@@ -69,7 +70,7 @@ class PreferenceScreen extends StatefulWidget {
 
 class _PreferenceScreenState extends State<PreferenceScreen> {
   bool _conversionModeOn = false;
-  String? selectedSinger;
+  String? selectedSinger = 'rose'; // 임시로 '로제'로 지정
 
   // 예시: Conversion Mode가 ON일 때 표시할 곡 정보
   // 실제로는 스트리밍 앱 연동 필요
@@ -168,22 +169,22 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
               ),
             ElevatedButton(
               onPressed: () async {
-                if (selectedSinger == null) return;
+                // song: antifreez, singer: rose로 고정
+                final fixedSinger = 'rose';
+                final fixedSong = 'antifreez';
                 final resultFile = await requestVoiceConversion(
-                  selectedSinger!,
-                  currentSong['title']!,
+                  fixedSinger,
+                  fixedSong,
                 );
-                // 여기서 곡을 추가하지 않고, 단순히 파일이 잘 받아졌는지만 확인
-                print('변환 완료: ${resultFile.path}');
-                // 필요하다면 안내 메시지, 파일 경로 확인 등만 수행
+                print('변환 완료: \\${resultFile.path}');
                 _onVoiceConversionComplete(
                   context,
                   resultFile,
-                  currentSong['title']!,
-                  selectedSinger!,
+                  fixedSong,
+                  fixedSinger,
                 );
               },
-              child: Text('Voice Conversion 테스트'),
+              child: Text('테스트'),
             ),
           ],
         ),
@@ -210,13 +211,18 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
 
 Future<File> requestVoiceConversion(String singer, String song) async {
   final dio = Dio();
+  final backendIp = await getBackendIp();
   final response = await dio.post(
-    'http://<SERVER_IP>:5000/convert',
+    'http://$backendIp:5000/convert',
     data: {'singer': singer, 'song': song},
-    options: Options(responseType: ResponseType.bytes),
+    options: Options(
+      responseType: ResponseType.bytes,
+      headers: {'Content-Type': 'application/json'},
+    ),
   );
   final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}/$singer\_$song.wav');
+  final uuid = Uuid();
+  final file = File('${dir.path}/$singer\_$song\_${uuid.v4()}.wav');
   await file.writeAsBytes(response.data);
   return file;
 }

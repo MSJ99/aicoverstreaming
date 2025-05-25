@@ -61,6 +61,7 @@ class SelectSingerScreen extends StatefulWidget {
 
 class _SelectSingerScreenState extends State<SelectSingerScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _showSingerList = false;
 
   // 예시 데이터 (TODO: 반응형으로)
   final List<String> allSingers = [
@@ -210,30 +211,10 @@ class _SelectSingerScreenState extends State<SelectSingerScreen> {
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: '가수 이름 검색',
-                prefixIcon: IconButton(
-                  icon: Icon(Icons.list),
-                  onPressed: _showTargetSingerListDialog,
-                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredSingers.length,
-              itemBuilder: (context, index) {
-                final singer = filteredSingers[index];
-                return ListTile(
-                  title: Text(singer),
-                  trailing:
-                      selectedSingers.contains(singer)
-                          ? const Icon(Icons.check, color: Colors.green)
-                          : null,
-                  onTap: () => _onSingerTap(singer),
-                );
-              },
             ),
           ),
         ],
