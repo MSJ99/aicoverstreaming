@@ -1,3 +1,4 @@
 server/uploads/
 server/downloads/
 server/.env
+client/.env

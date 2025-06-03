@@ -6,8 +6,16 @@ import 'screens/preference_screen.dart';
 import 'providers/playlist_provider.dart';
 import 'providers/conversion_mode_provider.dart';
 import 'services/spotify_auth_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:spotify_sdk/spotify_sdk.dart';
 
-void main() {
+Future<void> main() async {
+  try {
+    await dotenv.load(fileName: ".env");
+    print(dotenv.env);
+  } catch (e) {
+    print('dotenv load error: $e');
+  }
   runApp(
     MultiProvider(
       providers: [
@@ -53,6 +61,12 @@ class _AuthGateState extends State<AuthGate> {
     });
     try {
       await authenticateWithSpotify();
+      // 인증 후 강제로 음악 일시정지 (추가 안전장치)
+      try {
+        await SpotifySdk.pause();
+      } catch (e) {
+        // 음악이 재생 중이 아니면 무시
+      }
       setState(() {
         _isAuthenticated = true;
         _isLoading = false;
@@ -67,6 +81,9 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    print(
+      '_isLoading: $_isLoading, _error: $_error, _isAuthenticated: $_isAuthenticated',
+    );
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }

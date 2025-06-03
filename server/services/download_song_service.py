@@ -6,9 +6,9 @@ SONGS_DIR = os.path.join("server", "input", "songs")
 os.makedirs(SONGS_DIR, exist_ok=True)
 
 
-def get_youtube_url(title, artist):
+def get_youtube_url(artist):
     """
-    곡명과 아티스트로 유튜브에서 검색해 첫 번째 영상의 URL을 반환합니다.
+    아티스트로 유튜브에서 검색해 첫 번째 영상의 URL을 반환
     :param title: 곡 제목
     :param artist: 아티스트명
     :return: 유튜브 영상 URL 또는 None
@@ -38,7 +38,7 @@ def get_youtube_url(title, artist):
 
 def download_audio_as_wav(url, title, artist, output_dir=SONGS_DIR):
     """
-    주어진 유튜브 URL에서 오디오를 WAV 파일로 다운로드합니다.
+    주어진 유튜브 URL에서 오디오를 WAV 파일로 다운로드
     :param url: 유튜브 동영상 URL
     :param title: 곡 제목
     :param artist: 아티스트명

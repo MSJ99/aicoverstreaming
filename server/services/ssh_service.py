@@ -7,6 +7,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 def connect_ssh():
+    """
+    SSH 연결을 생성하여 반환
+    환경변수에서 접속 정보(호스트, 유저, 비밀번호, 포트) 사용
+    """
     host = os.environ.get("SSH_HOST")
     username = os.environ.get("SSH_USER")
     password = os.environ.get("SSH_PASSWORD")
@@ -19,13 +23,21 @@ def connect_ssh():
 
 
 def upload_file(ssh, local_path, remote_path):
+    """
+    로컬 파일을 SSH를 통해 원격 서버로 업로드
+    """
     sftp = ssh.open_sftp()
     sftp.put(local_path, remote_path)
     sftp.close()
 
 
-def submit_job(ssh, run_sh_path="run.sh"):
-    command = "cd /data/msj9518/repos/seed-vc && " f"sbatch {run_sh_path}"
+def submit_job(ssh, run_sh_path):
+    """
+    Slurm 작업을 제출하는 명령을 SSH로 실행
+    :param run_sh_path: 실행할 쉘 스크립트 경로
+    :return: Slurm 제출 결과 메시지
+    """
+    command = "cd /data/msj9518/repos/rvc-cli && " f"sbatch {run_sh_path}"
     logging.info(f"[LOG] SSH에서 Slurm 작업 제출: {command}")
     stdin, stdout, stderr = ssh.exec_command(command)
     job_submission_output = stdout.read().decode().strip()
@@ -39,9 +51,12 @@ def submit_job(ssh, run_sh_path="run.sh"):
     return job_submission_output
 
 
-# GPU 서버에서 작업이 끝날 때까지 대기하는 기능 ••• 방식 개선?
-# check_interval: 작업이 완료되었는지 확인하는 주기
 def wait_for_job_done(ssh, output_path, check_interval=5):
+    """
+    Slurm 작업이 완료될 때까지(결과 파일이 생성될 때까지) 대기
+    :param output_path: 결과 파일 경로
+    :param check_interval: 확인 주기(초)
+    """
     job_done = False
     while not job_done:
         stdin, stdout, stderr = ssh.exec_command(
@@ -56,6 +71,9 @@ def wait_for_job_done(ssh, output_path, check_interval=5):
 def download_file(
     ssh, remote_path, local_path, remote_input_path="none", remote_output_path="none"
 ):
+    """
+    원격 서버에서 파일을 다운로드하고, 필요시 원격 파일 삭제
+    """
     logging.info(f"[LOG] 다운로드 시도: {remote_path} → {local_path}")
     sftp = ssh.open_sftp()
     sftp.get(remote_path, local_path)
@@ -68,4 +86,7 @@ def download_file(
 
 
 def close_ssh(ssh):
+    """
+    SSH 연결 종료
+    """
     ssh.close()

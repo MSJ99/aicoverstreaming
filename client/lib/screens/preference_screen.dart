@@ -6,12 +6,12 @@ import '../models/song.dart';
 import 'package:provider/provider.dart';
 import '../providers/playlist_provider.dart';
 import 'package:uuid/uuid.dart';
-import '../services/get_backend_ip_service.dart';
 import 'dart:async';
 import 'package:spotify_sdk/spotify_sdk.dart';
-import '../services/spotify_auth_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// ConversionModeButton 위젯
+/// ConversionModeButton
+/// - 변환 모드 ON/OFF를 토글하는 버튼 위젯
 class ConversionModeButton extends StatefulWidget {
   final bool initialModeOn;
   final ValueChanged<bool>? onChanged;
@@ -28,6 +28,8 @@ class ConversionModeButton extends StatefulWidget {
   State<ConversionModeButton> createState() => _ConversionModeButtonState();
 }
 
+/// _ConversionModeButtonState
+/// - 버튼 상태(ON/OFF)를 관리하고, 클릭 시 콜백 호출
 class _ConversionModeButtonState extends State<ConversionModeButton> {
   late bool _isModeOn;
 
@@ -62,8 +64,8 @@ class _ConversionModeButtonState extends State<ConversionModeButton> {
   }
 }
 
-/// Preference 화면
-/// - ConversionModeButton 클릭 시 Conversion Mode ON -> 스트리밍 앱의 현재 곡 정보 표시
+/// PreferenceScreen
+/// - 변환 모드 토글, 음성 변환 테스트, Spotify 연동 등 환경설정 기능을 제공하는 화면
 class PreferenceScreen extends StatefulWidget {
   const PreferenceScreen({Key? key}) : super(key: key);
 
@@ -71,18 +73,19 @@ class PreferenceScreen extends StatefulWidget {
   State<PreferenceScreen> createState() => _PreferenceScreenState();
 }
 
+/// _PreferenceScreenState
+/// - 변환 모드, 로딩/에러 상태, Spotify 연동, 음성 변환 요청 등 환경설정 관련 상태와 기능을 관리
 class _PreferenceScreenState extends State<PreferenceScreen> {
   bool _conversionModeOn = false;
   Timer? _playerCheckTimer;
   String? selectedSinger = 'rose'; // 임시로 '로제'로 지정
+  String? _errorMessage;
+  bool _isLoading = false;
 
-  // 예시: Conversion Mode가 ON일 때 표시할 곡 정보
-  // 실제로는 스트리밍 앱 연동 필요
-  final Map<String, String> currentSong = {
-    'title': 'Ditto',
-    'artist': 'NewJeans',
-    'album': 'OMG',
-  };
+  // 실제 Spotify에서 받아온 현재 곡 정보
+  String? _currentTrackTitle;
+  String? _currentTrackArtist;
+  String? _currentTrackAlbum;
 
   @override
   Widget build(BuildContext context) {
@@ -95,31 +98,38 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (_isLoading) ...[
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+              ],
+              if (_errorMessage != null) ...[
+                Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 16),
+              ],
+              // 변환 모드 토글 버튼
               ConversionModeButton(
                 initialModeOn: _conversionModeOn,
                 onChanged: _onConversionModeChanged,
-                enabled: selectedSinger != null,
+                enabled: selectedSinger != null && !_isLoading,
               ),
               const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () async {
-                  // song: antifreez, singer: rose로 고정
-                  final fixedSinger = 'rose';
-                  final fixedSong = 'antifreez';
-                  final resultFile = await requestVoiceConversion(
-                    fixedSinger,
-                    fixedSong,
-                  );
-                  debugPrint('변환 완료: \\${resultFile.path}');
-                  _onVoiceConversionComplete(
-                    context,
-                    resultFile,
-                    fixedSong,
-                    fixedSinger,
-                  );
-                },
-                child: Text('테스트'),
-              ),
+              // 현재 Spotify 곡 정보 표시
+              if (_conversionModeOn && _currentTrackTitle != null) ...[
+                Text(
+                  '현재 곡: $_currentTrackTitle',
+                  style: const TextStyle(fontSize: 16),
+                ),
+                Text(
+                  '아티스트: $_currentTrackArtist',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                if (_currentTrackAlbum != null)
+                  Text(
+                    '앨범: $_currentTrackAlbum',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                const SizedBox(height: 24),
+              ],
             ],
           ),
         ),
@@ -127,35 +137,54 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
     );
   }
 
+  /// 음성 변환 완료 시 플레이리스트에 곡 추가
   void _onVoiceConversionComplete(
     BuildContext context,
     File resultFile,
     String title,
     String artist,
   ) {
-    // Provider를 통해 곡 추가
-    Provider.of<PlaylistProvider>(context, listen: false).addSong(
-      Song(
-        title: title,
-        artist: artist,
-        audioUrl: resultFile.path, // Song 모델에 맞게 경로 전달
-      ),
-    );
+    Provider.of<PlaylistProvider>(
+      context,
+      listen: false,
+    ).addSong(Song(title: title, artist: artist, audioUrl: resultFile.path));
   }
 
+  /// 변환 모드 토글 시 서버에 상태 동기화 및 Spotify 상태 체크 타이머 관리
   void _onConversionModeChanged(bool isOn) async {
     setState(() {
       _conversionModeOn = isOn;
+      _isLoading = true;
+      _errorMessage = null;
     });
-    await setConversionMode(isOn);
-
-    if (isOn) {
-      _startPlayerCheck();
-    } else {
-      _stopPlayerCheck();
+    try {
+      await setConversionMode(isOn);
+      if (isOn) {
+        _startPlayerCheck();
+      } else {
+        _stopPlayerCheck();
+        setState(() {
+          _currentTrackTitle = null;
+          _currentTrackArtist = null;
+          _currentTrackAlbum = null;
+        });
+      }
+    } catch (e) {
+      if (e.toString().contains('401')) {
+        Navigator.pushReplacementNamed(context, '/login');
+      } else {
+        setState(() {
+          _errorMessage = '변환 모드 변경 실패: $e';
+        });
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
+  /// Spotify 상태를 주기적으로 체크하여 현재 곡 정보를 받아와 화면에 표시
   void _startPlayerCheck() {
     _playerCheckTimer?.cancel();
     _playerCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
@@ -163,43 +192,30 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
         final playerState = await SpotifySdk.getPlayerState();
         final track = playerState?.track;
         if (track != null) {
-          debugPrint('현재 곡: ${track.name} / ${track.artist.name}');
-          // Spotify Web API로 context 정보까지 가져와 kirby로 전달
-          try {
-            final accessToken = await SpotifySdk.getAccessToken(
-              clientId: clientId,
-              redirectUrl: redirectUri,
-              scope: scope,
-            );
-            final dio = Dio();
-            final webApiResponse = await dio.get(
-              'https://api.spotify.com/v1/me/player',
-              options: Options(
-                headers: {'Authorization': 'Bearer $accessToken'},
-              ),
-            );
-            final data = webApiResponse.data;
-            final contextUri = data['context']?['uri'];
-            final backendIp = await getBackendIp();
-            await dio.post(
-              'http://$backendIp:5000/your_endpoint', // TODO: 실제 엔드포인트로 변경 필요
-              data: {
-                'track_name': track.name,
-                'artist': track.artist.name,
-                'context_uri': contextUri,
-              },
-              options: Options(headers: {'Content-Type': 'application/json'}),
-            );
-          } catch (e) {
-            debugPrint('곡 정보 전달 실패: $e');
-          }
+          setState(() {
+            _currentTrackTitle = track.name;
+            _currentTrackArtist = track.artist.name;
+            _currentTrackAlbum = track.album.name;
+          });
+        } else {
+          setState(() {
+            _currentTrackTitle = null;
+            _currentTrackArtist = null;
+            _currentTrackAlbum = null;
+          });
         }
       } catch (e) {
+        setState(() {
+          _currentTrackTitle = null;
+          _currentTrackArtist = null;
+          _currentTrackAlbum = null;
+        });
         debugPrint('Spotify 상태 확인 실패: $e');
       }
     });
   }
 
+  /// Spotify 상태 체크 타이머 중지
   void _stopPlayerCheck() {
     _playerCheckTimer?.cancel();
     _playerCheckTimer = null;
@@ -212,11 +228,13 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
   }
 }
 
+/// 서버에 음성 변환 요청을 보내고 결과 파일을 반환하는 함수
 Future<File> requestVoiceConversion(String singer, String song) async {
   final dio = Dio();
-  final backendIp = await getBackendIp();
+  final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+  final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
   final response = await dio.post(
-    'http://$backendIp:5000/convert',
+    'http://$backendIp:$backendPort/convert',
     data: {'singer': singer, 'song': song},
     options: Options(
       responseType: ResponseType.bytes,
@@ -230,13 +248,15 @@ Future<File> requestVoiceConversion(String singer, String song) async {
   return file;
 }
 
+/// 서버에 변환 모드 상태를 동기화하는 함수
 Future<void> setConversionMode(bool on) async {
   final dio = Dio();
-  final backendIp = await getBackendIp();
+  final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+  final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
   final response = await dio.post(
-    'http://$backendIp:5000/conversion_mode',
+    'http://$backendIp:$backendPort/conversion_mode',
     data: {'on': on},
     options: Options(contentType: Headers.jsonContentType),
   );
-  debugPrint(response.data); // {"on": true} 또는 {"on": false}
+  debugPrint(response.data.toString());
 }
