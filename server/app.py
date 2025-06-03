@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import logging
 import socket
 import sys
+from services.convert_service import convert_song
 
 load_dotenv()  # .env 파일 자동 로드
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
@@ -34,58 +35,25 @@ selected_singers = []
 # 음성 변환 요청 처리
 @app.route("/convert", methods=["POST"])
 def convert_voice():
-    global ssh_connection
     data = request.json
-    if not data:
-        return "Invalid JSON", 400
     singer = data.get("singer")
     song = data.get("song")
     if not singer or not song:
         return "가수와 곡 정보를 모두 입력해야 합니다.", 400
 
-    logging.info(f"[LOG] 받은 singer: {singer}, song: {song}")
+    # 1. (이미 구현됨) yt-dlp로 음원 다운로드 → local_song_path
+    local_song_path = os.path.join("server", "input", "songs", f"{song}.wav")
+    if not os.path.exists(local_song_path):
+        return "음원이 존재하지 않습니다.", 404
 
-    # GPU 서버 input/output 경로
+    # 2. 전체 파이프라인 실행
+    try:
+        result_path = convert_song(local_song_path, singer)
+    except Exception as e:
+        return f"처리 중 오류 발생: {e}", 500
 
-    # seed-VC
-    # remote_target = f"/data/msj9518/repos/seed-vc/input/{secure_filename(singer)}.wav"
-    # remote_source = f"/data/msj9518/repos/seed-vc/input/{secure_filename(song)}.wav"
-    # 결과 파일명 규칙에 맞게 수정 (source=곡명, target=가수명, arg1=1.0, arg2=50, arg3=0.7)
-    # arg1 = 1.0
-    # arg2 = 50
-    # arg3 = 0.7
-    # remote_output = f"/data/msj9518/repos/seed-vc/output/vc_{secure_filename(song)}_{secure_filename(singer)}_{arg1}_{arg2}_{arg3}.wav"
-
-    # RVC v2
-    remote_input = f"/data/msj9518/repos/rvc-v2/input/{secure_filename(song)}.wav"
-    remote_output = f"/data/msj9518/repos/rvc-v2/output/{secure_filename(song)}_{secure_filename(singer)}.wav"
-
-    # SSH 연결
-    if ssh_connection is None:
-        ssh = connect_ssh()
-        close_after = True
-    else:
-        ssh = ssh_connection
-        close_after = False
-
-    # Slurm 작업 제출 (스크립트에서 인자 전달 방식에 맞게)
-    # 예시: sbatch ~/convert.sh {remote_source} {remote_target} {remote_output}
-    submit_job(ssh)
-
-    # 작업 완료 대기
-    wait_for_job_done(ssh, remote_output)
-
-    # 결과 파일 다운로드
-    local_result_path = os.path.join(
-        DOWNLOAD_FOLDER, f"{secure_filename(singer)}_{secure_filename(song)}.wav"
-    )
-    download_file(ssh, remote_output, local_result_path)
-
-    if close_after:
-        close_ssh(ssh)
-
-    logging.info("[LOG] 변환 완료")
-    return send_file(local_result_path, as_attachment=True)
+    # 3. 결과 파일 반환
+    return send_file(result_path, as_attachment=True)
 
 
 # 가수 검색 요청 처리 (TBD: 추후 구현 예정)
