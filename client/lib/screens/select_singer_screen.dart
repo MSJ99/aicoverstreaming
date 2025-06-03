@@ -124,7 +124,7 @@ class _SelectSingerScreenState extends State<SelectSingerScreen> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('기존에 선택한 가수'),
+            title: const Text('선택 기록'),
             content: SizedBox(
               width: double.maxFinite,
               child: ListView(

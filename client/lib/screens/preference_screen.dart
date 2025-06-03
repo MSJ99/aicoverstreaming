@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/conversion_service.dart';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -7,6 +6,10 @@ import '../models/song.dart';
 import 'package:provider/provider.dart';
 import '../providers/playlist_provider.dart';
 import 'package:uuid/uuid.dart';
+import '../services/get_backend_ip_service.dart';
+import 'dart:async';
+import 'package:spotify_sdk/spotify_sdk.dart';
+import '../services/spotify_auth_service.dart';
 
 /// ConversionModeButton 위젯
 class ConversionModeButton extends StatefulWidget {
@@ -70,6 +73,7 @@ class PreferenceScreen extends StatefulWidget {
 
 class _PreferenceScreenState extends State<PreferenceScreen> {
   bool _conversionModeOn = false;
+  Timer? _playerCheckTimer;
   String? selectedSinger = 'rose'; // 임시로 '로제'로 지정
 
   // 예시: Conversion Mode가 ON일 때 표시할 곡 정보
@@ -86,107 +90,38 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
       appBar: AppBar(title: const Text('Preference')),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            ConversionModeButton(
-              initialModeOn: _conversionModeOn,
-              onChanged: (isOn) async {
-                setState(() {
-                  _conversionModeOn = isOn;
-                });
-                await setConversionMode(isOn);
-              },
-              enabled: selectedSinger != null,
-            ),
-            const SizedBox(height: 32),
-            if (_conversionModeOn)
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        '현재 재생 중인 곡 정보',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.music_note,
-                            size: 32,
-                            color: Colors.blue,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '제목:  ${currentSong['title']}',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                Text(
-                                  '아티스트: ${currentSong['artist']}',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                Text(
-                                  '앨범: ${currentSong['album']}',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              const Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(16)),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(24.0),
-                  child: Text(
-                    'Conversion Mode를 켜면\n스트리밍 앱의 현재 곡 정보를 받아옵니다.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ConversionModeButton(
+                initialModeOn: _conversionModeOn,
+                onChanged: _onConversionModeChanged,
+                enabled: selectedSinger != null,
               ),
-            ElevatedButton(
-              onPressed: () async {
-                // song: antifreez, singer: rose로 고정
-                final fixedSinger = 'rose';
-                final fixedSong = 'antifreez';
-                final resultFile = await requestVoiceConversion(
-                  fixedSinger,
-                  fixedSong,
-                );
-                print('변환 완료: \\${resultFile.path}');
-                _onVoiceConversionComplete(
-                  context,
-                  resultFile,
-                  fixedSong,
-                  fixedSinger,
-                );
-              },
-              child: Text('테스트'),
-            ),
-          ],
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () async {
+                  // song: antifreez, singer: rose로 고정
+                  final fixedSinger = 'rose';
+                  final fixedSong = 'antifreez';
+                  final resultFile = await requestVoiceConversion(
+                    fixedSinger,
+                    fixedSong,
+                  );
+                  debugPrint('변환 완료: \\${resultFile.path}');
+                  _onVoiceConversionComplete(
+                    context,
+                    resultFile,
+                    fixedSong,
+                    fixedSinger,
+                  );
+                },
+                child: Text('테스트'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -207,6 +142,74 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
       ),
     );
   }
+
+  void _onConversionModeChanged(bool isOn) async {
+    setState(() {
+      _conversionModeOn = isOn;
+    });
+    await setConversionMode(isOn);
+
+    if (isOn) {
+      _startPlayerCheck();
+    } else {
+      _stopPlayerCheck();
+    }
+  }
+
+  void _startPlayerCheck() {
+    _playerCheckTimer?.cancel();
+    _playerCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        final playerState = await SpotifySdk.getPlayerState();
+        final track = playerState?.track;
+        if (track != null) {
+          debugPrint('현재 곡: ${track.name} / ${track.artist.name}');
+          // Spotify Web API로 context 정보까지 가져와 kirby로 전달
+          try {
+            final accessToken = await SpotifySdk.getAccessToken(
+              clientId: clientId,
+              redirectUrl: redirectUri,
+              scope: scope,
+            );
+            final dio = Dio();
+            final webApiResponse = await dio.get(
+              'https://api.spotify.com/v1/me/player',
+              options: Options(
+                headers: {'Authorization': 'Bearer $accessToken'},
+              ),
+            );
+            final data = webApiResponse.data;
+            final contextUri = data['context']?['uri'];
+            final backendIp = await getBackendIp();
+            await dio.post(
+              'http://$backendIp:5000/your_endpoint', // TODO: 실제 엔드포인트로 변경 필요
+              data: {
+                'track_name': track.name,
+                'artist': track.artist.name,
+                'context_uri': contextUri,
+              },
+              options: Options(headers: {'Content-Type': 'application/json'}),
+            );
+          } catch (e) {
+            debugPrint('곡 정보 전달 실패: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('Spotify 상태 확인 실패: $e');
+      }
+    });
+  }
+
+  void _stopPlayerCheck() {
+    _playerCheckTimer?.cancel();
+    _playerCheckTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _playerCheckTimer?.cancel();
+    super.dispose();
+  }
 }
 
 Future<File> requestVoiceConversion(String singer, String song) async {
@@ -225,4 +228,15 @@ Future<File> requestVoiceConversion(String singer, String song) async {
   final file = File('${dir.path}/$singer\_$song\_${uuid.v4()}.wav');
   await file.writeAsBytes(response.data);
   return file;
+}
+
+Future<void> setConversionMode(bool on) async {
+  final dio = Dio();
+  final backendIp = await getBackendIp();
+  final response = await dio.post(
+    'http://$backendIp:5000/conversion_mode',
+    data: {'on': on},
+    options: Options(contentType: Headers.jsonContentType),
+  );
+  debugPrint(response.data); // {"on": true} 또는 {"on": false}
 }

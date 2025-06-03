@@ -26,7 +26,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     );
     final songs = playlistProvider.songs;
     final song = songs[index];
-    print('재생 시도: \\${song.audioUrl}');
+    debugPrint('재생 시도: \\${song.audioUrl}');
     if (_playingIndex == index) {
       await _audioPlayer.pause();
       setState(() {

@@ -56,7 +56,7 @@ def wait_for_job_done(ssh, output_path, check_interval=5):
 def download_file(
     ssh, remote_path, local_path, remote_input_path="none", remote_output_path="none"
 ):
-    print(f"[LOG] 다운로드 시도: {remote_path} → {local_path}")
+    logging.info(f"[LOG] 다운로드 시도: {remote_path} → {local_path}")
     sftp = ssh.open_sftp()
     sftp.get(remote_path, local_path)
     if remote_input_path != "none":
@@ -64,7 +64,7 @@ def download_file(
     if remote_output_path != "none":
         sftp.remove(remote_output_path)
     sftp.close()
-    print(f"[LOG] 다운로드 완료: {local_path}")
+    logging.info(f"[LOG] 다운로드 완료: {local_path}")
 
 
 def close_ssh(ssh):
