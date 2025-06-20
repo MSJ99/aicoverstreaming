@@ -21,5 +21,13 @@ class PlaylistProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// 곡 전체를 서버 output 파일 리스트로 갱신
+  void setSongs(List<Song> songs) {
+    _songs
+      ..clear()
+      ..addAll(songs);
+    notifyListeners();
+  }
+
   // 필요시 삭제, 전체 삭제 등 메서드 추가 가능
 }

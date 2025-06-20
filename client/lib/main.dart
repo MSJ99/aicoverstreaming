@@ -8,27 +8,74 @@ import 'providers/conversion_mode_provider.dart';
 import 'services/spotify_auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:developer';
+import 'providers/fcm_token_provider.dart';
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  log('백그라운드 메시지: \\${message.messageId}', name: 'FCM');
+}
 
 Future<void> main() async {
   try {
     await dotenv.load(fileName: ".env");
-    print(dotenv.env);
+    log(dotenv.env.toString(), name: 'FCM');
   } catch (e) {
-    print('dotenv load error: $e');
+    log('dotenv load error: $e', name: 'FCM', level: 1000);
   }
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => PlaylistProvider()),
         ChangeNotifierProvider(create: (_) => ConversionModeProvider()..init()),
+        ChangeNotifierProvider(create: (_) => FcmTokenProvider()),
       ],
       child: const MyApp(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MyApp extends StatefulWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String? _fcmToken;
+  String _message = '알림 없음';
+
+  @override
+  void initState() {
+    super.initState();
+    _initFCM();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // FCM 토큰이 있으면 Provider에 저장
+    if (_fcmToken != null) {
+      final provider = Provider.of<FcmTokenProvider>(context, listen: false);
+      provider.setToken(_fcmToken!);
+    }
+  }
+
+  Future<void> _initFCM() async {
+    await FirebaseMessaging.instance.requestPermission();
+    String? token = await FirebaseMessaging.instance.getToken();
+    log('FCM 토큰: $token', name: 'FCM');
+    setState(() {
+      _fcmToken = token;
+    });
+    // Provider 저장은 didChangeDependencies에서!
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +84,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const AuthGate(),
+      home: AuthGate(),
     );
   }
 }

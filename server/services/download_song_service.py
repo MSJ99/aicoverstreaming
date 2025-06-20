@@ -2,7 +2,7 @@ import os
 import yt_dlp
 import logging
 
-SONGS_DIR = os.path.join("server", "input", "songs")
+SONGS_DIR = os.path.join("input", "songs")
 os.makedirs(SONGS_DIR, exist_ok=True)
 
 
@@ -42,7 +42,7 @@ def download_audio_as_wav(url, title, artist, output_dir=SONGS_DIR):
     :param url: 유튜브 동영상 URL
     :param title: 곡 제목
     :param artist: 아티스트명
-    :param output_dir: 저장할 디렉토리 (기본값: server/input/songs)
+    :param output_dir: 저장할 디렉토리 (기본값: input/songs)
     :return: 저장된 파일 경로
     """
     if not os.path.exists(output_dir):

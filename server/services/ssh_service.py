@@ -2,6 +2,7 @@ import os
 import paramiko
 import time
 import logging
+import re
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,24 +32,25 @@ def upload_file(ssh, local_path, remote_path):
     sftp.close()
 
 
-def submit_job(ssh, run_sh_path):
+def submit_job(ssh, command):
     """
     Slurm 작업을 제출하는 명령을 SSH로 실행
-    :param run_sh_path: 실행할 쉘 스크립트 경로
-    :return: Slurm 제출 결과 메시지
+    :param command: 실행할 전체 명령어 (예: 'cd ... && sbatch ...')
+    :return: Slurm 제출 결과 메시지와 job id
     """
-    command = "cd /data/msj9518/repos/rvc-cli && " f"sbatch {run_sh_path}"
     logging.info(f"[LOG] SSH에서 Slurm 작업 제출: {command}")
     stdin, stdout, stderr = ssh.exec_command(command)
     job_submission_output = stdout.read().decode().strip()
     error_output = stderr.read().decode().strip()
     logging.info(f"[LOG] Slurm 제출 결과: {job_submission_output}")
-    # 'sbatch: AURORA: Job submitted' 메시지는 에러가 아니므로 무시
     if error_output and "AURORA: Job submitted" not in error_output:
         logging.error(f"[ERROR] Slurm 제출 에러: {error_output}")
     elif error_output:
         logging.info(f"[LOG] Slurm 안내 메시지: {error_output}")
-    return job_submission_output
+    # Slurm job id 추출
+    match = re.search(r"Submitted batch job (\d+)", job_submission_output)
+    job_id = match.group(1) if match else None
+    return job_id
 
 
 def wait_for_job_done(ssh, output_path, check_interval=5):
@@ -59,12 +61,18 @@ def wait_for_job_done(ssh, output_path, check_interval=5):
     """
     job_done = False
     while not job_done:
+        print(f"[wait_for_job_done] 파일 존재 확인 시도: {output_path}")
         stdin, stdout, stderr = ssh.exec_command(
             f"test -f {output_path} && echo 'done'"
         )
-        if stdout.read().decode().strip() == "done":
+        result = stdout.read().decode().strip()
+        if result == "done":
+            print(f"[wait_for_job_done] 파일 생성됨: {output_path}")
             job_done = True
         else:
+            print(
+                f"[wait_for_job_done] 파일 없음, {check_interval}초 후 재시도: {output_path}"
+            )
             time.sleep(check_interval)
 
 

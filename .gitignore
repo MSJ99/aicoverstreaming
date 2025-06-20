@@ -1,4 +1,4 @@
-server/uploads/
-server/downloads/
+server/input/
+server/output/
 server/.env
 client/.env

@@ -3,6 +3,11 @@ import 'package:audioplayers/audioplayers.dart';
 import '../models/song.dart';
 import 'package:provider/provider.dart';
 import '../providers/playlist_provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
+import 'dart:io';
+import '../services/api_client.dart';
 
 /// PlaylistScreen
 /// - 음성 변환으로 생성된 곡 리스트를 보여주고, 곡별로 재생/일시정지/삭제 기능을 제공하는 화면
@@ -21,6 +26,57 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   int? _playingIndex;
   String? _errorMessage;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAndSyncOutputFiles();
+  }
+
+  Future<void> _fetchAndSyncOutputFiles() async {
+    try {
+      final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+      final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
+      final response = await ApiClient().get(
+        Uri.parse('http://$backendIp:$backendPort/output_files'),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final files = List<String>.from(data['files']);
+        final songs =
+            files.map((filename) {
+              final name = filename.replaceAll('.wav', '');
+              final parts = name.split('_');
+              final artist = parts.isNotEmpty ? parts[0] : '';
+              final title = parts.length > 1 ? parts.sublist(1).join('_') : '';
+              return Song(
+                title: title,
+                artist: artist,
+                audioUrl: filename, // 서버 파일명(다운로드시 사용)
+              );
+            }).toList();
+        Provider.of<PlaylistProvider>(context, listen: false).setSongs(songs);
+      }
+    } catch (e) {
+      // 에러 처리
+    }
+  }
+
+  Future<File> downloadOutputFile(String filename) async {
+    final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+    final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
+    final response = await ApiClient().get(
+      Uri.parse('http://$backendIp:$backendPort/download_output/$filename'),
+    );
+    if (response.statusCode == 200) {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(response.bodyBytes);
+      return file;
+    } else {
+      throw Exception('파일 다운로드 실패');
+    }
+  }
 
   /// 곡 재생/일시정지 핸들러
   /// - 이미 재생 중인 곡을 누르면 일시정지, 다른 곡을 누르면 해당 곡 재생
@@ -117,7 +173,28 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     const Icon(Icons.more_vert),
                   ],
                 ),
-                onTap: () => _onPlayPause(index),
+                onTap: () async {
+                  setState(() {
+                    _isLoading = true;
+                    _errorMessage = null;
+                  });
+                  try {
+                    final file = await downloadOutputFile(song.audioUrl);
+                    await _audioPlayer.stop();
+                    await _audioPlayer.play(DeviceFileSource(file.path));
+                    setState(() {
+                      _playingIndex = index;
+                    });
+                  } catch (e) {
+                    setState(() {
+                      _errorMessage = '재생 실패: $e';
+                    });
+                  } finally {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
+                },
               );
             },
           );
