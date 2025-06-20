@@ -9,6 +9,11 @@ import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../services/api_client.dart';
+import 'dart:convert';
+import '../providers/fcm_token_provider.dart';
+import '../providers/conversion_mode_provider.dart';
+import '../services/secure_storage_service.dart';
 
 /// ConversionModeButton
 /// - 변환 모드 ON/OFF를 토글하는 버튼 위젯
@@ -77,18 +82,13 @@ class PreferenceScreen extends StatefulWidget {
 /// - 변환 모드, 로딩/에러 상태, Spotify 연동, 음성 변환 요청 등 환경설정 관련 상태와 기능을 관리
 class _PreferenceScreenState extends State<PreferenceScreen> {
   bool _conversionModeOn = false;
-  Timer? _playerCheckTimer;
-  String? selectedSinger = 'rose'; // 임시로 '로제'로 지정
   String? _errorMessage;
   bool _isLoading = false;
 
-  // 실제 Spotify에서 받아온 현재 곡 정보
-  String? _currentTrackTitle;
-  String? _currentTrackArtist;
-  String? _currentTrackAlbum;
-
   @override
   Widget build(BuildContext context) {
+    final currentSelectedSinger =
+        Provider.of<ConversionModeProvider>(context).currentSelectedSinger;
     return Scaffold(
       appBar: AppBar(title: const Text('Preference')),
       body: Padding(
@@ -110,26 +110,9 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
               ConversionModeButton(
                 initialModeOn: _conversionModeOn,
                 onChanged: _onConversionModeChanged,
-                enabled: selectedSinger != null && !_isLoading,
+                enabled: currentSelectedSinger != null && !_isLoading,
               ),
               const SizedBox(height: 32),
-              // 현재 Spotify 곡 정보 표시
-              if (_conversionModeOn && _currentTrackTitle != null) ...[
-                Text(
-                  '현재 곡: $_currentTrackTitle',
-                  style: const TextStyle(fontSize: 16),
-                ),
-                Text(
-                  '아티스트: $_currentTrackArtist',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                if (_currentTrackAlbum != null)
-                  Text(
-                    '앨범: $_currentTrackAlbum',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                const SizedBox(height: 24),
-              ],
             ],
           ),
         ),
@@ -158,16 +141,49 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
       _errorMessage = null;
     });
     try {
-      await setConversionMode(isOn);
       if (isOn) {
-        _startPlayerCheck();
+        try {
+          // 1. access token 준비
+          final accessToken = await secureStorage.read(key: 'accessToken');
+          final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+          final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
+          // 2. 서버에 conversion_mode_info로 변환 모드 ON 신호 전송
+          final currentSelectedSinger =
+              Provider.of<ConversionModeProvider>(
+                context,
+                listen: false,
+              ).currentSelectedSinger;
+          final response = await ApiClient().post(
+            Uri.parse('http://$backendIp:$backendPort/conversion_mode_info'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'access_token': accessToken,
+              'singer_name': currentSelectedSinger,
+              'conversion_mode': 'on',
+            }),
+          );
+          if (response.statusCode == 200) {
+            setState(() {
+              _errorMessage = null;
+            });
+          } else {
+            final data = jsonDecode(response.body);
+            setState(() {
+              _errorMessage = data['error'] ?? '변환 모드 시작 실패';
+            });
+            return;
+          }
+        } catch (e) {
+          setState(() {
+            _errorMessage = '변환 모드 시작 실패: $e';
+          });
+          return;
+        }
       } else {
-        _stopPlayerCheck();
-        setState(() {
-          _currentTrackTitle = null;
-          _currentTrackArtist = null;
-          _currentTrackAlbum = null;
-        });
+        await setConversionMode(isOn);
+      }
+      if (!isOn) {
+        await setConversionMode(isOn);
       }
     } catch (e) {
       if (e.toString().contains('401')) {
@@ -177,86 +193,76 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
           _errorMessage = '변환 모드 변경 실패: $e';
         });
       }
-    } finally {
       setState(() {
         _isLoading = false;
       });
     }
   }
 
-  /// Spotify 상태를 주기적으로 체크하여 현재 곡 정보를 받아와 화면에 표시
-  void _startPlayerCheck() {
-    _playerCheckTimer?.cancel();
-    _playerCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      try {
-        final playerState = await SpotifySdk.getPlayerState();
-        final track = playerState?.track;
-        if (track != null) {
-          setState(() {
-            _currentTrackTitle = track.name;
-            _currentTrackArtist = track.artist.name;
-            _currentTrackAlbum = track.album.name;
-          });
-        } else {
-          setState(() {
-            _currentTrackTitle = null;
-            _currentTrackArtist = null;
-            _currentTrackAlbum = null;
-          });
-        }
-      } catch (e) {
-        setState(() {
-          _currentTrackTitle = null;
-          _currentTrackArtist = null;
-          _currentTrackAlbum = null;
-        });
-        debugPrint('Spotify 상태 확인 실패: $e');
-      }
-    });
-  }
-
-  /// Spotify 상태 체크 타이머 중지
-  void _stopPlayerCheck() {
-    _playerCheckTimer?.cancel();
-    _playerCheckTimer = null;
-  }
-
   @override
   void dispose() {
-    _playerCheckTimer?.cancel();
     super.dispose();
   }
 }
 
 /// 서버에 음성 변환 요청을 보내고 결과 파일을 반환하는 함수
 Future<File> requestVoiceConversion(String singer, String song) async {
-  final dio = Dio();
   final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
   final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
-  final response = await dio.post(
-    'http://$backendIp:$backendPort/convert',
-    data: {'singer': singer, 'song': song},
-    options: Options(
-      responseType: ResponseType.bytes,
-      headers: {'Content-Type': 'application/json'},
-    ),
+  final response = await ApiClient().post(
+    Uri.parse('http://$backendIp:$backendPort/convert'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'singer': singer, 'song': song}),
   );
   final dir = await getTemporaryDirectory();
   final uuid = Uuid();
   final file = File('${dir.path}/$singer\_$song\_${uuid.v4()}.wav');
-  await file.writeAsBytes(response.data);
+  await file.writeAsBytes(response.bodyBytes);
   return file;
 }
 
 /// 서버에 변환 모드 상태를 동기화하는 함수
 Future<void> setConversionMode(bool on) async {
-  final dio = Dio();
   final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
   final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
-  final response = await dio.post(
-    'http://$backendIp:$backendPort/conversion_mode',
-    data: {'on': on},
-    options: Options(contentType: Headers.jsonContentType),
+  final response = await ApiClient().post(
+    Uri.parse('http://$backendIp:$backendPort/conversion_mode'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'on': on}),
   );
-  debugPrint(response.data.toString());
+  debugPrint(response.body);
+}
+
+Future<void> sendConversionModeInfoToServer(
+  BuildContext context, {
+  String? playlistId,
+}) async {
+  final fcmToken = Provider.of<FcmTokenProvider>(context, listen: false).token;
+  final currentSelectedSinger =
+      Provider.of<ConversionModeProvider>(
+        context,
+        listen: false,
+      ).currentSelectedSinger;
+  final accessToken = await secureStorage.read(key: 'accessToken');
+  print(
+    'fcmToken: $fcmToken, singerName: $currentSelectedSinger, accessToken: $accessToken',
+  );
+  if (currentSelectedSinger == null || accessToken == null) {
+    throw Exception('필수 정보 누락');
+  }
+  final backendIp = dotenv.env['BACKEND_IP'] ?? '127.0.0.1';
+  final backendPort = dotenv.env['BACKEND_PORT'] ?? '5000';
+  final response = await ApiClient().post(
+    Uri.parse('http://$backendIp:$backendPort/conversion_mode_info'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({
+      'fcm_token': fcmToken,
+      'singer_name': currentSelectedSinger,
+      'spotify_access_token': accessToken,
+      if (playlistId != null) 'playlist_id': playlistId,
+    }),
+  );
+  if (response.statusCode != 200) {
+    throw Exception('서버 전송 실패: \\${response.body}');
+  }
 }
