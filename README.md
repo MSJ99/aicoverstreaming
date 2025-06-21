@@ -43,11 +43,20 @@ SSH_PORT=your_ssh_port
 ```
 
 ### 3. gpu server
-본 디렉토리는 외부 GPU 서버의 디렉토리를 복사한 것입니다.
-본인의 GPU 서버를 사용할 때 해당 디렉토리 구조를 참고하면 됩니다.
+# 사용할 GPU 서버의 디렉토리 
 
 
 ## Members
 | 명승준 | 서지은 |
 | :-: | :-: |
 | <a href="https://github.com/msj99"><img src='https://avatars.githubusercontent.com/u/74344298?v=4' height=130 width=130></img></a> | <a href="https://github.com/maiteun"><img src='https://avatars.githubusercontent.com/u/54938691?v=4' height=130 width=130></img></a>
+
+## Acknowledgements
+
+This project utilizes code from the following third-party repositories. We are grateful to the original authors for their contributions.
+
+-   **rvc-cli / Applio**
+    -   **Author/Group:** IAHispano
+    -   **Repository:** [https://github.com/IAHispano/Applio](https://github.com/IAHispano/Applio)
+    -   **License:** Creative Commons Attribution-NonCommercial 4.0 International
+    -   **Note:** The `gpu_server_dir/rvc-cli` directory contains a version of the `rvc-cli` tool, which is now part of the Applio project. The original `LICENSE` and `README.md` files are retained within that directory as required.
