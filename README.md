@@ -24,6 +24,15 @@ flutter pub get
 # .env 파일 작성
 BACKEND_IP=your_backend_ip
 BACKEND_PORT=your_backend_port
+
+# ios/Runner/Config.xcconfig 파일 작성
+FIREBASE_API_KEY = your_api_key_here
+FIREBASE_PROJECT_ID = your_project_id_here
+FIREBASE_BUNDLE_ID = your_bundle_id_here
+FIREBASE_GCM_SENDER_ID = your_gcm_sender_id_here
+FIREBASE_STORAGE_BUCKET = your_storage_bucket_here
+FIREBASE_GOOGLE_APP_ID = your_google_app_id_here
+# 이후 Xcode에서 프로젝트를 열고 Build Settings로 이동, Configuration File을 검색하여 Config.xcconfig 파일을 설정
 ```
 
 ### 2. server
