@@ -52,7 +52,7 @@ SSH_PORT=your_ssh_port
 ```
 
 ### 3. gpu server
-# 사용할 GPU 서버의 디렉토리 
+# 사용할 GPU 서버의 디렉토리
 
 
 ## Members
